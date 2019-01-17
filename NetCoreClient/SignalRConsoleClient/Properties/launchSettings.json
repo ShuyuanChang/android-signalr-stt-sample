@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "SignalRConsoleClient": {
+      "commandName": "Project",
+      "commandLineArgs": "--url https://michi-signalr-server.azurewebsites.net/voice -l en-us -u hehe"
+    }
+  }
+}

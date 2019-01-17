@@ -1,0 +1,7 @@
+/build
+/bin
+/obj
+bin/
+obj/
+bin/Debug
+bin/Debug/netcoreapp2.1/*
