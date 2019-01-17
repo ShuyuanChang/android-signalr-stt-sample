@@ -43,6 +43,7 @@ public class MainActivity extends AppCompatActivity {
     private static String Language = "zh-TW";
     AudioRecord recorder = null;
     String SIGNALR_SERVER = "<SERVER URL>";
+    private TextView textView = null;
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -60,12 +61,16 @@ public class MainActivity extends AppCompatActivity {
     private Object lock = new Object();
     private void InitSignalRConnection() {
         TerminateSignalRconnection();
-
+        textView = (TextView) this.findViewById(R.id.hello); // 'hello' is the ID of your text view
         hubConnection = HubConnectionBuilder.create(SIGNALR_SERVER).build();
         hubConnection.on("ServerMessages", (message) -> {
             System.out.println("=========================>>>>>New Message: " + message);
-            TextView txt = (TextView) this.findViewById(R.id.hello); // 'hello' is the ID of your text view
-            txt.setText(txt.getText() + "\r\n" + message);
+            runOnUiThread(new Runnable() {
+                public void run()
+                {
+                    textView.setText(textView.getText() + "\r\n" + message);
+                }
+            });
         }, String.class);
         hubConnection.start().blockingAwait();
         hubConnection.send("RegisterAttendeeAsync", "michael", Language, Language);
@@ -92,26 +97,26 @@ public class MainActivity extends AppCompatActivity {
     private void writeAudioDataToFile() {
         InitSignalRConnection();
         hubConnection.setKeepAliveInterval(1000 * 10);
-        hubConnection.on("ServerMessages", (message) -> {
-            System.out.println("=========================>>>>>New Message: " + message);
-            TextView txt = (TextView) this.findViewById(R.id.hello); // 'hello' is the ID of your text view
-            txt.setText(txt.getText() + "\r\n" + message);
-        }, String.class);
+        
         byte [] header = GetWaveHeader();
         if(header == null){
             System.out.println("===========================HEADER FAILED===========================");
         }
+
         if(hubConnection.getConnectionState() != HubConnectionState.CONNECTED) {
             System.out.println("Reconnecting...");
             hubConnection.start().blockingAwait();
         }
+
         hubConnection.send("RegisterAttendeeAsync", "michael", Language, Language);
         System.out.println("sending WAVE HEADER......");
         hubConnection.send("ReceiveAudioJavaAsync", "michael", header);
+
         int minBufSize = AudioRecord.getMinBufferSize(RECORDER_SAMPLERATE, RECORDER_CHANNELS, RECORDER_AUDIO_ENCODING);
         while (isRecording) {
             byte buffer [] = new byte[minBufSize];
             if(recorder.read( buffer,0, minBufSize) > -1){
+                //  Try to reconnect when dropped connection.
                 if(hubConnection.getConnectionState() != HubConnectionState.CONNECTED) {
                     System.out.println("Reconnecting...");
                     hubConnection.start().blockingAwait();
