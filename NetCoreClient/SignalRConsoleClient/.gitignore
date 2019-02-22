@@ -2,6 +2,7 @@
 /bin
 /obj
 bin/
-obj/
-bin/Debug
-bin/Debug/netcoreapp2.1/*
+**/obj/*
+**/bin/Debug/*
+**/bin/Debug/netcoreapp2.1/*
+appsettings.Development.json

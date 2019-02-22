@@ -39,14 +39,15 @@ namespace SignalRConsoleClient
                 Console.WriteLine(message);
             });
 
+            //  RegisterAttendeeAsync(string name, string myLanguage, string preferredLanguage)
             await connection.StartAsync();
             Console.WriteLine($"user {options.UserName} with language {options.Language} registerred");
             await connection.InvokeAsync("RegisterAttendeeAsync",
                                     options.UserName,
-                                    options.Language,
+                                    options.MyLanguage,
                                     options.Language);
 
-            var data = File.ReadAllBytes(@".\whatstheweatherlike.wav");
+            var data = File.ReadAllBytes(@"C:\temp\whatstheweatherlike.wav");
             const int size = 100 * 20;
             byte[] buffer = new byte[size];
 
@@ -60,13 +61,12 @@ namespace SignalRConsoleClient
                 
                 Array.Copy(data, index, buffer, 0, targetSize);
                 index += size;
-
+                Console.WriteLine("Sending...");
                 await connection.InvokeAsync("ReceiveAudioAsync",
                                     options.UserName, buffer);
             }
-            
+            Console.WriteLine("Send complete!");
             Console.ReadLine();
-            
         }
 
     }

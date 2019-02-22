@@ -13,6 +13,7 @@ using SignalRChat.Helpers;
 using Newtonsoft.Json;
 using System.IO;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Logging;
 
 namespace SignalRChat.Hubs
 {
@@ -22,8 +23,13 @@ namespace SignalRChat.Hubs
         private static IHubContext<VoiceHub> _hubContext;
         private static Dictionary<string, SpeechAPIConnection> _connections;
         private static Dictionary<string, AttendeeInfo> _attendeeInfo;
-        public VoiceHub(IConfiguration configuration, IHubContext<VoiceHub> ctx)
+        private static ILogger<VoiceHub> _logger;
+
+        public VoiceHub(IConfiguration configuration, IHubContext<VoiceHub> ctx, ILogger<VoiceHub> logger)
         {
+            if (_logger == null)
+                _logger = logger;
+
             if (_config == null)
                 _config = configuration;
 
@@ -40,7 +46,7 @@ namespace SignalRChat.Hubs
         #region SignalR public methods
         public async void RegisterAttendeeAsync(string name, string myLanguage, string preferredLanguage)
         {
-            Debug.WriteLine($"User {name}, Language: {myLanguage}, Connection {Context.ConnectionId} starting audio.");
+            _logger.LogDebug($"User {name}, Language: {myLanguage}, Connection {Context.ConnectionId} starting audio.");
             var config = _config.GetSection("SpeechAPI").Get<AppSettings>();
 
             bool exists = await InitializeAttendeeInfo(name, myLanguage, preferredLanguage);
@@ -53,7 +59,7 @@ namespace SignalRChat.Hubs
             var speechRegion = config.Region;
             var url = config.EndpointUri;
 
-            Debug.WriteLine($"Key:{speechKey} | Region:{speechRegion}");
+            _logger.LogDebug($"Key:{speechKey} | Region:{speechRegion}");
 
             var speechConfig = SpeechConfig.FromSubscription(speechKey, speechRegion);
             speechConfig.SpeechRecognitionLanguage = preferredLanguage;
@@ -86,27 +92,76 @@ namespace SignalRChat.Hubs
                 _connections[preferredLanguage] = conn;
             }
 
-            Debug.WriteLine($"Connection for {preferredLanguage} added | SessionId:{sessionId}");
+            _logger.LogDebug($"Connection for {preferredLanguage} added | SessionId:{sessionId}");
 
             await SendToAttendeeAsync(_attendeeInfo.GetAttendeeByConnectionID(Context.ConnectionId), $"Welcome:{name}");
-            await speechClient.StartContinuousRecognitionAsync();
+            await speechClient.StartContinuousRecognitionAsync().ConfigureAwait(false);
 
-            Debug.WriteLine("Audio start message.");
+            _logger.LogDebug("Audio start message.");
         }
 
-        
-
-        //  Java's uses signed byte. so we use sbyte here to receive incoming data from Java client
+        private void WriteToFile(string name, sbyte[] data)
+        {
+            var path = Path.Combine(Startup.RootPath, $"APP_DATA\\{name}");
+            FileStream stream = null;
+            if (!File.Exists(path))
+            {
+                stream = File.Create(path);
+            }
+            else
+            {
+                stream = File.Open(path, FileMode.Append);
+            }
+            FileInfo info = new FileInfo(path);
+            using (var sw = new BinaryWriter(stream))
+            {
+                sw.Seek((int)info.Length, SeekOrigin.Begin);
+                var buffer = (byte[])(Array)data;
+                sw.Write(buffer, 0, (int)buffer.Length);
+                sw.Close();
+            }
+        }
+        private void WriteToFile(string name, byte[] data)
+        {
+            var path = Path.Combine(Startup.RootPath, $"APP_DATA\\{name}.wav");
+            FileStream stream = null;
+            if (!File.Exists(path))
+            {
+                stream = File.Create(path);
+            }
+            else
+            {
+                stream = File.Open(path, FileMode.Append);
+            }
+            FileInfo info = new FileInfo(path);
+            using (var sw = new BinaryWriter(stream))
+            {
+                sw.Seek((int)info.Length, SeekOrigin.Begin);
+                sw.Write(data, 0, (int)data.Length);
+                sw.Close();
+            }
+        }
         public Task ReceiveAudioJavaAsync(string name, sbyte[] audio)
         {
             var attendee = _attendeeInfo[name];
             byte[] buffer = (byte[])(Array)audio;
-            //WriteToFile(name, audio);
+            //WriteToFile($"{name}.wav", audio);
             _connections[attendee.PreferredLanguage].AudioStream.Write(buffer, 0, buffer.Length);
-            Debug.WriteLine("Translating.............................");
+            buffer = null;
+            //Console.WriteLine("Translating.............................");
+            //Console.WriteLine("Translating.............................");
+            //Trace.WriteLine("Translating.............................");
             return Task.CompletedTask;
         }
-        //  Other clients use this method to send audio data
+        public void Disconnect(string name)
+        {
+            _logger.LogDebug("======== Disconnecting =========");
+            var attendee = _attendeeInfo.GetAttendeeByConnectionID(Context.ConnectionId);
+            if (attendee != null)
+            {
+                _attendeeInfo.Remove(attendee.ID);
+            }
+        }
         public Task ReceiveAudioAsync(string name, byte[] audio)
         {
             var attendee = _attendeeInfo[name];
@@ -120,10 +175,8 @@ namespace SignalRChat.Hubs
         #region SignalR Helper Functions
         public async override Task OnDisconnectedAsync(Exception exception)
         {
-            Debug.WriteLine("======== Disconnecting =========");
+            _logger.LogInformation("======== Disconnecting =========");
             var attendee = _attendeeInfo.GetAttendeeByConnectionID(Context.ConnectionId);
-            //  For testing purpose, do not remove attendee reference when client disconnected, the client will try to reconnect.
-            //  To futher complete this, we should implement a closing handshake to ensure disconnect process before removing attendee reference
             /*
             if (attendee != null)
             {
@@ -177,21 +230,22 @@ namespace SignalRChat.Hubs
             }
             catch
             {
-                Debug.WriteLine(String.Join(',', _attendeeInfo.Keys.ToArray()));
+                _logger.LogInformation("Exception while sending to attendees:" + String.Join(',', _attendeeInfo.Keys.ToArray()));
                 throw;
+                return Task.CompletedTask;
             }
         }
 
         private Task[] SendToAttendeesByLanguageAsync(string language, string message)
         {
-            var attendees = _attendeeInfo.GetAttendeesByLanguage(language);
+            var attendees = _attendeeInfo.GetAttendeeByTargetLanguage(language);
 
             if (attendees != null)
             {
                 List<Task> tasks = new List<Task>();
                 foreach (var attendee in attendees)
                 {
-                    Console.WriteLine($"Send to attendee {attendee.ConnectionID}");
+                    _logger.LogDebug($"Send to attendee {attendee.ConnectionID}");
                     tasks.Add(SendToAttendeeAsync(attendee, message));
                 }
                 //Task.WaitAll(tasks.ToArray(), System.Threading.CancellationToken.None);
@@ -201,7 +255,7 @@ namespace SignalRChat.Hubs
         }
         private void SendTranscript(string language, string message)
         {
-            Debug.WriteLine($"Sending Transcripts:{message} | {language}");
+            _logger.LogDebug($"Sending Transcripts:{message} | {language}");
             var tasks = SendToAttendeesByLanguageAsync(language, message);
             Task.WaitAll(tasks);
         }
@@ -210,28 +264,30 @@ namespace SignalRChat.Hubs
         #region Speech events
         private void _speechClient_Canceled(object sender, SpeechRecognitionCanceledEventArgs e)
         {
-            //WriteToFile("result.txt", System.Text.Encoding.Default.GetBytes($"[{DateTime.Now}][Canceled]{e.Reason}\r\n"));
-            Debug.WriteLine("Recognition was cancelled.");
+            WriteToFile("result.txt", System.Text.Encoding.Default.GetBytes($"[{DateTime.Now}][Canceled]{e.ErrorDetails}\r\n"));
+            _logger.LogDebug("Recognition was cancelled.");
         }
 
         private void _speechClient_Recognizing(object sender, SpeechRecognitionEventArgs e)
         {
-            //WriteToFile("result.txt", System.Text.Encoding.Default.GetBytes($"[{DateTime.Now}][Recognizing]{e.Result.Text}\r\n"));
-            Debug.WriteLine($"{e.SessionId} > Intermediate result: {e.Result.Text}");
-            Debug.WriteLine(JsonConvert.SerializeObject(e));
-            Debug.WriteLine(JsonConvert.SerializeObject(sender));
-            var conn = _connections.GetAPIConnection(e.SessionId);
+            WriteToFile("result.txt", System.Text.Encoding.Default.GetBytes($"[{DateTime.Now}][Recognizing]{e.Result.Text}\r\n"));
+            _logger.LogDebug($"{e.SessionId} > Intermediate result: {e.Result.Text}");
+            _logger.LogDebug(JsonConvert.SerializeObject(e));
+            _logger.LogDebug(JsonConvert.SerializeObject(sender));
+            var conn = _connections.GetAPIConnectionByLanguage(((SpeechRecognizer)sender).SpeechRecognitionLanguage);
+            _logger.LogDebug($"Sending transcripts of {conn?.Language}:{e?.Result?.Text}");
+            
             SendTranscript(conn.Language, e.Result.Text);
         }
         private void _speechClient_SessionStarted(object sender, SessionEventArgs e)
         {
-            //WriteToFile("result.txt", System.Text.Encoding.Default.GetBytes($"[{DateTime.Now}][SessionStarted]\r\n"));
+            WriteToFile("result.txt", System.Text.Encoding.Default.GetBytes($"[{DateTime.Now}][SessionStarted]{e.SessionId}\r\n"));
         }
         private void _speechClient_Recognized(object sender, SpeechRecognitionEventArgs e)
         {
-            Debug.WriteLine($"{e.SessionId} > Final result: {e.Result.Text}");
+            _logger.LogDebug($"{e.SessionId} > Final result: {e.Result.Best().FirstOrDefault()?.Text}");
             SpeechRecognizer r = (SpeechRecognizer)sender;
-            SendTranscript(r.SpeechRecognitionLanguage, e.Result.Text);
+            SendTranscript(r.SpeechRecognitionLanguage, e.Result.Best().FirstOrDefault()?.Text);
         }
         #endregion
     }

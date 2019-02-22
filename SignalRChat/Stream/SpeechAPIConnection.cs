@@ -12,7 +12,10 @@ namespace SignalRChat.Stream
     {
         public string SessionId { get; set; }
         public VoiceAudioStream AudioStream { get; set; }
-        public SpeechRecognizer Recognizer { get; set; }
+        //public SpeechRecognizer Recognizer { get; set; }
+        public Recognizer Recognizer { get; set; }
         public string Language { get; set; }
+
+        public string TargetLanguage { get; set; }
     }
 }

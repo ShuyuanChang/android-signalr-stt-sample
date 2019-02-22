@@ -7,6 +7,7 @@ namespace SignalRConsoleClient
 {
     public class ConsoleOptions
     {
+
         [Option(
            longName: "url",
            HelpText = "SignalR Server URL",
@@ -29,8 +30,17 @@ namespace SignalRConsoleClient
             longName: "lang",
             HelpText = "Preferred Language",
             Required = false,
-            Default = "en-us"
+            Default = "zh-tw"
             )]
         public string Language { get; set; }
+
+        [Option(
+            shortName: 'm',
+            longName: "mylang",
+            HelpText = "My Language",
+            Required = false,
+            Default = "en-us"
+            )]
+        public string MyLanguage { get; set; }
     }
 }

@@ -2,6 +2,9 @@ package com.example.michi.videosample;
 
 
 import android.content.Intent;
+import android.os.SystemClock;
+import android.support.design.widget.TextInputEditText;
+import android.support.design.widget.TextInputLayout;
 import android.support.v4.app.ActivityCompat;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
@@ -28,9 +31,9 @@ import com.microsoft.signalr.*;
 
 public class MainActivity extends AppCompatActivity {
     // Replace below with your own subscription key
-    private static String speechSubscriptionKey = "<SPEECH KEY>";
+    private static String speechSubscriptionKey = "98bba22d547b4147a941d8074aaad9c7";
     // Replace below with your own service region (e.g., "westus").
-    private static String serviceRegion = "<SERVICEＲＥＧＩＯＮ＞>";
+    private static String serviceRegion = "eastasia";
     private static boolean isRecording = false;
     private static final int RECORDER_SAMPLERATE = 16000;
     private static final int RECORDER_CHANNELS = AudioFormat.CHANNEL_IN_MONO;
@@ -40,16 +43,24 @@ public class MainActivity extends AppCompatActivity {
     private static final int BufferElements2Rec = 1024; // want to play 2048 (2K) since 2 bytes we use only 1024
     private static final int BytesPerElement = 2; // 2 bytes in 16bit format
     private static HubConnection hubConnection = null;
-    private static String Language = "zh-TW";
+    private String MyLanguage = "en-US";
+    private String TargetLanguage = "zh-Hant";
+    private String UserName = "michael";
     AudioRecord recorder = null;
-    String SIGNALR_SERVER = "<SERVER URL>";
-    private TextView textView = null;
+    String SIGNALR_SERVER = "http://michidevvm.eastasia.cloudapp.azure.com:5000/translator";
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
         int requestCode = 5; // unique code for the permission request
         ActivityCompat.requestPermissions(MainActivity.this, new String[]{RECORD_AUDIO, INTERNET}, requestCode);
+
+        // Disable QVA
+        if(true) {
+            Intent intent = new Intent("q2w");
+            intent.putExtra("message", "StopWackUpService");
+            sendBroadcast(intent);
+        }
     }
     private void TerminateRecorder(){
         if(recorder != null){
@@ -58,22 +69,26 @@ public class MainActivity extends AppCompatActivity {
             recorder = null;
         }
     }
-    private Object lock = new Object();
+    private TextView textView = null;
     private void InitSignalRConnection() {
         TerminateSignalRconnection();
         textView = (TextView) this.findViewById(R.id.hello); // 'hello' is the ID of your text view
         hubConnection = HubConnectionBuilder.create(SIGNALR_SERVER).build();
         hubConnection.on("ServerMessages", (message) -> {
-            System.out.println("=========================>>>>>New Message: " + message);
             runOnUiThread(new Runnable() {
                 public void run()
                 {
-                    textView.setText(textView.getText() + "\r\n" + message);
+                    System.out.println("[Message]" + message);
+                    //textView.setText(textView.getText() + "\r\n" + message);
+                    if(message == null || message == ""){
+                        return;
+                    }
+                    textView.setText(message);
                 }
             });
         }, String.class);
         hubConnection.start().blockingAwait();
-        hubConnection.send("RegisterAttendeeAsync", "michael", Language, Language);
+        hubConnection.send("RegisterAttendeeAsync", UserName, MyLanguage, TargetLanguage);
         System.out.println("Registerred !!!!!!!");
     }
 
@@ -83,48 +98,37 @@ public class MainActivity extends AppCompatActivity {
             hubConnection = null;
         }
     }
-    private byte[] short2byte(short[] sData) {
-        int shortArrsize = sData.length;
-        byte[] bytes = new byte[shortArrsize * 2];
 
-        for (int i = 0; i < shortArrsize; i++) {
-            bytes[i * 2] = (byte) (sData[i] & 0x00FF);
-            bytes[(i * 2) + 1] = (byte) (sData[i] >> 8);
-            sData[i] = 0;
-        }
-        return bytes;
-    }
     private void writeAudioDataToFile() {
         InitSignalRConnection();
         hubConnection.setKeepAliveInterval(1000 * 10);
-        
+
         byte [] header = GetWaveHeader();
         if(header == null){
             System.out.println("===========================HEADER FAILED===========================");
         }
-
         if(hubConnection.getConnectionState() != HubConnectionState.CONNECTED) {
-            System.out.println("Reconnecting...");
+            System.out.println("......Reconnecting...");
             hubConnection.start().blockingAwait();
         }
-
-        hubConnection.send("RegisterAttendeeAsync", "michael", Language, Language);
+        hubConnection.send("RegisterAttendeeAsync", UserName, MyLanguage, TargetLanguage);
         System.out.println("sending WAVE HEADER......");
-        hubConnection.send("ReceiveAudioJavaAsync", "michael", header);
-
+        hubConnection.send("ReceiveAudioJavaAsync", UserName, header);
         int minBufSize = AudioRecord.getMinBufferSize(RECORDER_SAMPLERATE, RECORDER_CHANNELS, RECORDER_AUDIO_ENCODING);
+        System.out.println(">>> Size:" +minBufSize);
         while (isRecording) {
             byte buffer [] = new byte[minBufSize];
             if(recorder.read( buffer,0, minBufSize) > -1){
-                //  Try to reconnect when dropped connection.
                 if(hubConnection.getConnectionState() != HubConnectionState.CONNECTED) {
-                    System.out.println("Reconnecting...");
+                    System.out.println(".........Reconnecting...");
                     hubConnection.start().blockingAwait();
-                    hubConnection.send("RegisterAttendeeAsync", "michael", Language,Language);
+                    hubConnection.send("RegisterAttendeeAsync", UserName, MyLanguage,TargetLanguage);
                 }
-                hubConnection.send("ReceiveAudioJavaAsync", "michael",  buffer);
-                buffer = null;
+                //System.out.println("........sending audio data.........");
+                hubConnection.send("ReceiveAudioJavaAsync", UserName,  buffer);
             }
+            buffer = null;
+            SystemClock.sleep(1);
         }
     }
     private void InitRecorder() {
@@ -139,6 +143,7 @@ public class MainActivity extends AppCompatActivity {
         isRecording = true;
         recordingThread = new Thread(new Runnable() {
             public void run() {
+                System.out.println("Starting recorder thread......");
                 writeAudioDataToFile();
             }
         }, "AudioRecorder Thread");

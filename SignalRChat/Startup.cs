@@ -38,9 +38,8 @@ namespace SignalRChat
         {
             RootPath = env.ContentRootPath;
 
-            loggerFactory.AddConsole(Configuration.GetSection("Logging"));
-            loggerFactory.AddDebug();
-
+            //loggerFactory.AddConsole(Configuration.GetSection("Logging"));
+            
             if (env.IsDevelopment())
             {
                 app.UseDeveloperExceptionPage();
@@ -51,6 +50,7 @@ namespace SignalRChat
             app.UseSignalR(route =>
             {
                 route.MapHub<SignalRChat.Hubs.VoiceHub>("/voice");
+                route.MapHub<SignalRChat.Hubs.TranslatorHub>("/translator");
             });
             app.UseWebSockets();
             app.UseMvc();
