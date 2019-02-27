@@ -31,7 +31,7 @@ import com.microsoft.signalr.*;
 
 public class MainActivity extends AppCompatActivity {
     // Replace below with your own subscription key
-    private static String speechSubscriptionKey = "98bba22d547b4147a941d8074aaad9c7";
+    private static String speechSubscriptionKey = "[Your Speech Services Key]";
     // Replace below with your own service region (e.g., "westus").
     private static String serviceRegion = "eastasia";
     private static boolean isRecording = false;
@@ -47,13 +47,17 @@ public class MainActivity extends AppCompatActivity {
     private String TargetLanguage = "zh-Hant";
     private String UserName = "michael";
     AudioRecord recorder = null;
-    String SIGNALR_SERVER = "http://michidevvm.eastasia.cloudapp.azure.com:5000/translator";
+    String SIGNALR_SERVER = "[URL of the SignalR Server]";
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
         int requestCode = 5; // unique code for the permission request
         ActivityCompat.requestPermissions(MainActivity.this, new String[]{RECORD_AUDIO, INTERNET}, requestCode);
+
+        // [John] modify text size
+        textView = (TextView) this.findViewById(R.id.hello); // 'hello' is the ID of your text view
+        textView.setTextSize(12);
 
         // Disable QVA
         if(true) {
@@ -73,6 +77,7 @@ public class MainActivity extends AppCompatActivity {
     private void InitSignalRConnection() {
         TerminateSignalRconnection();
         textView = (TextView) this.findViewById(R.id.hello); // 'hello' is the ID of your text view
+        //textView.setTextSize(12);
         hubConnection = HubConnectionBuilder.create(SIGNALR_SERVER).build();
         hubConnection.on("ServerMessages", (message) -> {
             runOnUiThread(new Runnable() {
